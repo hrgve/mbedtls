@@ -410,6 +410,38 @@ static int gcm_mask( mbedtls_gcm_context *ctx,
         return( ret );
     }
 
+#if defined(MBEDTLS_HAVE_X86_64)
+    if( use_len == 16 )
+    {
+        switch( ctx->mode )
+        {
+        case MBEDTLS_GCM_DECRYPT:
+            asm("movdqu     (%[buf]),   %%xmm0          \n\t"
+                "movdqu     (%[input]), %%xmm1          \n\t"
+                "pxor       %%xmm1,     %%xmm0          \n\t"
+                "pxor       (%[ectr]),  %%xmm1          \n\t"
+                "movdqu     %%xmm0,     (%[buf])        \n\t"
+                "movdqu     %%xmm1,     (%[output])     \n\t"
+                :
+                : [input] "r" (input), [buf] "r" (ctx->buf), [ectr] "r" (ectr), [output] "r" (output)
+                : "memory", "cc", "xmm0", "xmm1" );
+            return( 0 );
+        case MBEDTLS_GCM_ENCRYPT:
+            asm("movdqu     (%[input]), %%xmm0          \n\t"
+                "pxor       (%[ectr]),  %%xmm0          \n\t"
+                "movdqu     %%xmm0,     (%[output])     \n\t"
+                "movdqu     (%[buf]),   %%xmm1          \n\t"
+                "pxor       %%xmm0,     %%xmm1          \n\t"
+                "movdqu     %%xmm1,     (%[buf])        \n\t"
+                :
+                : [input] "r" (input), [buf] "r" (ctx->buf), [ectr] "r" (ectr), [output] "r" (output)
+                : "memory", "cc", "xmm0", "xmm1" );
+            return( 0 );
+        default:
+            break;
+        }
+    }
+#endif
     for( i = 0; i < use_len; i++ )
     {
         if( ctx->mode == MBEDTLS_GCM_DECRYPT )
