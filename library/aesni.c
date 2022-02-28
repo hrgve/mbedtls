@@ -142,19 +142,12 @@ void mbedtls_aesni_gcm_mult( unsigned char c[16],
                      const unsigned char a[16],
                      const unsigned char b[16] )
 {
-    unsigned char aa[16], bb[16], cc[16];
-    size_t i;
-
-    /* The inputs are in big-endian order, so byte-reverse them */
-    for( i = 0; i < 16; i++ )
-    {
-        aa[i] = a[15 - i];
-        bb[i] = b[15 - i];
-    }
-
+    static const unsigned char mask[16] = { 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0 };
     asm( "movdqu (%0), %%xmm0               \n\t" // a1:a0
          "movdqu (%1), %%xmm1               \n\t" // b1:b0
-
+         "movdqu (%3), %%xmm6               \n\t" // load mask
+         "pshufb %%xmm6, %%xmm0             \n\t" // reverse a
+         "pshufb %%xmm6, %%xmm1             \n\t" // reverse b
          /*
           * Caryless multiplication xmm2:xmm1 = xmm0 * xmm1
           * using [CLMUL-WP] algorithm 1 (p. 13).
@@ -234,16 +227,11 @@ void mbedtls_aesni_gcm_mult( unsigned char c[16],
          "pxor %%xmm1, %%xmm0               \n\t" // h1:h0
          "pxor %%xmm2, %%xmm0               \n\t" // x3+h1:x2+h0
 
+         "pshufb %%xmm6, %%xmm0             \n\t" // reverse output
          "movdqu %%xmm0, (%2)               \n\t" // done
          :
-         : "r" (aa), "r" (bb), "r" (cc)
-         : "memory", "cc", "xmm0", "xmm1", "xmm2", "xmm3", "xmm4", "xmm5" );
-
-    /* Now byte-reverse the outputs */
-    for( i = 0; i < 16; i++ )
-        c[i] = cc[15 - i];
-
-    return;
+         : "r" (a), "r" (b), "r" (c), "r" (mask)
+         : "memory", "cc", "xmm0", "xmm1", "xmm2", "xmm3", "xmm4", "xmm5", "xmm6" );
 }
 
 /*
